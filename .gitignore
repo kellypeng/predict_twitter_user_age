@@ -1,0 +1,10 @@
+*.pyc
+.ipynb_checkpoints
+*.bak
+*.swp
+.DS_Store
+*.dat
+*.json
+*.csv
+
+
