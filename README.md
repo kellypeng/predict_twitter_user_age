@@ -1,3 +1,3 @@
-# betterup
+# Predict twitter user age based on user profile and tweets data
 
-This repository contains files for BetterUp takehome challenge.
+Use twitter user profile, tweets, friends, mentions data to predict twitter user age.
