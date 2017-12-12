@@ -1,4 +1,6 @@
+# Python 3.6
 import emoji
+import pickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,15 +14,23 @@ from imblearn.over_sampling import SMOTE, RandomOverSampler
 
 
 def clean_data(ages_train):
-    '''Remove outliers
-    1. Remove users age older than 80
-    '''
+    """
+    Remove users age older than 80
+
+    Input: pandas dataframe
+    Output: pandas dataframe
+    """
     ages_train = ages_train[ages_train['Age']<80]
     return ages_train
 
 
 def extract_emojis(s):
-    '''Extract emojis from text'''
+    """
+    Extract emojis from text
+
+    Input: string
+    Output: a string of emojis that are extracted from the text
+    """
     return ''.join(c for c in str(s) if c in emoji.UNICODE_EMOJI)
 
 # define ios devices:
@@ -38,7 +48,12 @@ high_prob_25_word_list = ['married','producer','engineer','mother','30','family'
 
 
 def feature_engineering(age_profiles):
-    '''Process age_profiles for modeling'''
+    """
+    Process age_profiles for modeling
+
+    Input: pandas dataframe
+    Output: pandas dataframe
+    """
     ap_new = pd.concat([age_profiles,
                         pd.DataFrame(age_profiles['status'].apply(pd.Series) \
                         .rename(columns = lambda x: 'status_' + str(x)))], axis=1)
@@ -51,12 +66,21 @@ def feature_engineering(age_profiles):
     ap_new['source_android'] = (ap_new['source_parsed'].isin(android)).astype(int)
 
     ap_new['has_description'] = ap_new['description'].map(lambda x: x != '') # has profile description
-    ap_new['high_prob_25_older'] = ap_new['description'].apply(lambda x: int(any(term in x for term in high_prob_25_word_list)))
+    ap_new['older_group_words'] = ap_new['description'].apply(lambda x: int(any(term in x for term in high_prob_25_word_list)))
     return ap_new
 
 
 def joined_age(ap_new, ages_train):
-    '''Join ages_train with age_profiles'''
+    """
+    Join ages_train with age_profiles, return a joined dataframe
+
+    Input:
+    -------
+    pandas dataframe, pandas dataframe
+    Output:
+    -------
+    pandas dataframe
+    """
     ap_new = ap_new.set_index('id')
     ages_train = ages_train.set_index('ID')
     age_joined = ap_new.join(ages_train, how='inner')
@@ -64,7 +88,16 @@ def joined_age(ap_new, ages_train):
 
 
 def get_age_group(age_joined):
-    ''' Create a new column as age_decade '''
+    """
+    Create a new column as age_decade
+
+    Input:
+    -------
+    pandas dataframe
+    Output:
+    -------
+    pandas dataframe with a new column 'age_decade'
+    """
     bins = [17,25,35,45,55,120]
     group_names = ['18-25','26-35','36-45','46-55','>55']
     age_joined['age_decade'] = pd.cut(age_joined['Age'], bins, labels=group_names)
@@ -72,21 +105,40 @@ def get_age_group(age_joined):
 
 
 def design_matrix(age_joined):
-    ''' Create design matrix with multiclass labels'''
+    """
+    Create design matrix with multiclass labels
+
+    Input:
+    -------
+    pandas DataFrame
+    Output:
+    -------
+    pandas DataFrame can be put into model directly
+    with a new column age group index as label
+    """
     age_joined['age_idx'] = 1 # for age group 16-25
     age_joined['age_idx'][age_joined['age_decade'] == '26-35'] = 2
     age_joined['age_idx'][age_joined['age_decade'] == '36-45'] = 3
     age_joined['age_idx'][age_joined['age_decade'] == '46-55'] = 4
     age_joined['age_idx'][age_joined['age_decade'] == '>55'] = 5
     df = age_joined[['emoji_cnt', 'source_android','statuses_count',
-                     'has_description','followers_count',
-                     'favourites_count','source_ios', 'has_emoji', 'high_prob_25_older',
+                     'has_description','followers_count','favourites_count',
+                     'source_ios', 'has_emoji', 'older_group_words',
                      'profile_background_tile', 'age_idx']]
     return df
 
 
 def plot_feature_importance(estimator, X):
-    ''' Plot the feature importances of random forest'''
+    """
+    Plot the feature importances of random forest
+
+    Input:
+    -------
+    model estimator, design matrix
+    Output:
+    -------
+    feature importance plot
+    """
     importances = estimator.feature_importances_
     indices = np.argsort(importances)
     plt.title("Feature importances")
@@ -96,6 +148,23 @@ def plot_feature_importance(estimator, X):
     plt.yticks(range(X.shape[1]), feature_names[indices])
     plt.ylim([-1, X.shape[1]])
     plt.tight_layout()
+    plt.show()
+
+
+def write_pickle(filename, model):
+    """
+    Write the final model to a pickle file
+
+    Input:
+    -------
+    filename: String
+    model: sklearn model instance
+    Output:
+    -------
+    Nothing
+    """
+    with open(filename, 'wb') as f:
+        pickle.dump(model, f)
 
 
 if __name__ == '__main__':
@@ -113,29 +182,31 @@ if __name__ == '__main__':
                                                     random_state=42,
                                                     stratify=y)
     # Apply SMOTE to deal with imbalanced data
-    # sm = SMOTE(random_state=42)
-    # X_train, y_train = sm.fit_sample(X_train, y_train)
+    sm = SMOTE(random_state=42)
+    X_train, y_train = sm.fit_sample(X_train, y_train)
     # Also try undersampling and oversampling
-    # ros = RandomOverSampler(ratio='minority',random_state=42)
-    # X_train, y_train = ros.fit_sample(X_train, y_train)
+    ros = RandomOverSampler(ratio='minority',random_state=42)
+    X_train, y_train = ros.fit_sample(X_train, y_train)
+    # A dataset without over/undersampling is giving the same performance
+    # thus I'm not using over/undersampling when building models
 
     # logistic regression
-    # lr = LogisticRegression(solver='sag',
-    #                         multi_class='multinomial',
-    #                         C=1,
-    #                         penalty='l2',
-    #                         fit_intercept=True,
-    #                         random_state=42)
-    # lr.fit(X_train, y_train)
-    # lr_pred = lr.predict(X_test)
-    # score = lr.score(X_test, y_test)
-    # print('Logistic regression accuracy score:', score)
-    # cm = confusion_matrix(y_test, lr_pred)
-    # print('Logistic regression confusion matrix:')
-    # print(cm)
-    # class_report = classification_report(y_test, lr_pred)
-    # print('Logistic regression classification report')
-    # print(class_report)
+    lr = LogisticRegression(solver='sag',
+                            multi_class='multinomial',
+                            C=1,
+                            penalty='l2',
+                            fit_intercept=True,
+                            random_state=42)
+    lr.fit(X_train, y_train)
+    lr_pred = lr.predict(X_test)
+    score = lr.score(X_test, y_test)
+    print('Logistic regression accuracy score:', score)
+    cm = confusion_matrix(y_test, lr_pred)
+    print('Logistic regression confusion matrix:')
+    print(cm)
+    class_report = classification_report(y_test, lr_pred)
+    print('Logistic regression classification report')
+    print(class_report)
 
 
     # random forest:
@@ -153,15 +224,5 @@ if __name__ == '__main__':
     plot_feature_importance(rf, X)
 
 
-    # predict test set
-    ages_test = pd.read_csv('assignment_package/ages_test.csv')
-    age_profiles = pd.read_json('assignment_package/age_profiles.json')
-    ap = feature_engineering(age_profiles)
-    ages_test_joined = joined_age(ap, ages_test)
-    df_final = ages_test_joined[['emoji_cnt', 'source_android','statuses_count',
-             'has_description','followers_count',
-             'favourites_count','source_ios', 'has_emoji', 'high_prob_25_older',
-             'profile_background_tile']]
-    predictions = rf.predict(df_final)
-    df_final['predicted'] = predictions
-    df_final['predicted'].to_csv('prediction.csv')
+    print('pickle final model to file...')
+    write_pickle('rf_model.pkl', rf)
